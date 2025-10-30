@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using prjBusTix.Data;
 using prjBusTix.Dto.Boletos;
 using prjBusTix.Model;
+using prjBusTix.Services;
 using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text;
@@ -16,6 +17,7 @@ namespace prjBusTix.Controllers;
 public class BoletosController : ControllerBase
 {
     private readonly AppDbContext _context;
+    private readonly INotificacionService _notificacionService;
     private readonly ILogger<BoletosController> _logger;
     
     // Constantes para estatus
@@ -23,10 +25,14 @@ public class BoletosController : ControllerBase
     private const int ESTATUS_BOLETO_PAGADO = 10;    // BOL_PAGADO
     private const int ESTATUS_PAGO_PENDIENTE = 14;   // PAG_PENDIENTE
     
-    public BoletosController(AppDbContext context, ILogger<BoletosController> logger)
+    public BoletosController(
+        AppDbContext context, 
+        ILogger<BoletosController> logger,
+        INotificacionService notificacionService)
     {
         _context = context;
         _logger = logger;
+        _notificacionService = notificacionService;
     }
     
     /// <summary>

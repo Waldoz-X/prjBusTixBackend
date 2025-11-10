@@ -23,6 +23,11 @@ public interface INotificacionService
     Task<bool> EnviarEmailAsync(string email, string titulo, string mensaje);
     
     /// <summary>
+    /// Envía notificación en tiempo real vía SignalR
+    /// </summary>
+    Task<bool> EnviarNotificacionTiempoRealAsync(string usuarioId, object notificacion);
+    
+    /// <summary>
     /// Crea notificación de confirmación de compra
     /// </summary>
     Task EnviarConfirmacionCompraAsync(int boletoId);

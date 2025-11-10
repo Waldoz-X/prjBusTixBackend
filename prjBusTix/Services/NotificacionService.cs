@@ -1,5 +1,7 @@
-﻿using Microsoft.EntityFrameworkCore;
+﻿using Microsoft.AspNetCore.SignalR;
+using Microsoft.EntityFrameworkCore;
 using prjBusTix.Data;
+using prjBusTix.Hubs;
 using prjBusTix.Model;
 using System.Text.Json;
 
@@ -7,35 +9,53 @@ namespace prjBusTix.Services;
 
 /// <summary>
 /// Servicio para gestión de notificaciones
-/// Integra con Firebase Cloud Messaging y Email
+/// Integra con SignalR (tiempo real), Email y opcionalmente Firebase
 /// </summary>
 public class NotificacionService : INotificacionService
 {
     private readonly AppDbContext _context;
     private readonly ILogger<NotificacionService> _logger;
     private readonly IConfiguration _configuration;
+    private readonly IHubContext<NotificacionesHub> _hubContext;
     
     public NotificacionService(
         AppDbContext context,
         ILogger<NotificacionService> logger,
-        IConfiguration configuration)
+        IConfiguration configuration,
+        IHubContext<NotificacionesHub> hubContext)
     {
         _context = context;
         _logger = logger;
         _configuration = configuration;
+        _hubContext = hubContext;
     }
     
     /// <summary>
-    /// Envía una notificación completa (push + email según configuración)
+    /// Envía una notificación completa (SignalR + push + email según configuración)
     /// </summary>
     public async Task<bool> EnviarNotificacionAsync(Notificacion notificacion)
     {
         try
         {
+            bool exitoTiempoReal = false;
             bool exitoPush = true;
             bool exitoEmail = true;
             
-            // Enviar push si está habilitado
+            // 1. ENVIAR VÍA SIGNALR (Tiempo Real) - SIEMPRE
+            exitoTiempoReal = await EnviarNotificacionTiempoRealAsync(
+                notificacion.UsuarioID,
+                new
+                {
+                    notificacionId = notificacion.NotificacionID,
+                    titulo = notificacion.Titulo,
+                    mensaje = notificacion.Mensaje,
+                    tipo = notificacion.TipoNotificacion ?? "general",
+                    fechaCreacion = notificacion.FechaCreacion,
+                    viajeId = notificacion.ViajeID,
+                    boletoId = notificacion.BoletoID
+                });
+            
+            // 2. Enviar push si está habilitado
             if (notificacion.EnviarPush)
             {
                 // Verificar preferencias del usuario
@@ -65,7 +85,7 @@ public class NotificacionService : INotificacionService
                 }
             }
             
-            // Enviar email si está habilitado
+            // 3. Enviar email si está habilitado
             if (notificacion.EnviarEmail)
             {
                 var usuario = await _context.Users
@@ -82,15 +102,53 @@ public class NotificacionService : INotificacionService
             }
             
             // Actualizar estado de notificación
-            notificacion.FueEnviada = exitoPush || exitoEmail;
+            notificacion.FueEnviada = exitoTiempoReal || exitoPush || exitoEmail;
             notificacion.FechaEnvio = DateTime.Now;
             await _context.SaveChangesAsync();
             
-            return exitoPush || exitoEmail;
+            _logger.LogInformation(
+                "Notificación {NotificacionId} enviada. TiempoReal: {TR}, Push: {Push}, Email: {Email}",
+                notificacion.NotificacionID, exitoTiempoReal, exitoPush, exitoEmail);
+            
+            return exitoTiempoReal || exitoPush || exitoEmail;
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error al enviar notificación {NotificacionID}", notificacion.NotificacionID);
+            return false;
+        }
+    }
+    
+    /// <summary>
+    /// Envía notificación en tiempo real vía SignalR
+    /// </summary>
+    public async Task<bool> EnviarNotificacionTiempoRealAsync(string usuarioId, object notificacion)
+    {
+        try
+        {
+            // Verificar si el usuario está conectado
+            if (!NotificacionesHub.IsUserConnected(usuarioId))
+            {
+                _logger.LogInformation(
+                    "Usuario {UserId} no está conectado a SignalR, notificación guardada en BD",
+                    usuarioId);
+                return false;
+            }
+            
+            // Enviar a todos los dispositivos/conexiones del usuario
+            await _hubContext.Clients
+                .Group($"user-{usuarioId}")
+                .SendAsync("RecibirNotificacion", notificacion);
+            
+            _logger.LogInformation(
+                "Notificación enviada en tiempo real a usuario {UserId}",
+                usuarioId);
+            
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error al enviar notificación en tiempo real a usuario {UserId}", usuarioId);
             return false;
         }
     }

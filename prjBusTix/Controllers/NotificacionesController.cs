@@ -271,9 +271,9 @@ public class NotificacionesController : ControllerBase
     
     /// <summary>
     /// Marca una notificación como leída
-    /// PUT /api/notificaciones/{id}/marcar-leida
+    /// PUT /api/notificaciones/{id}/leer
     /// </summary>
-    [HttpPut("{id}/marcar-leida")]
+    [HttpPut("{id}/leer")]
     public async Task<IActionResult> MarcarComoLeida(int id)
     {
         try
@@ -284,89 +284,51 @@ public class NotificacionesController : ControllerBase
                 .FirstOrDefaultAsync(n => n.NotificacionID == id && n.UsuarioID == userId);
             
             if (notificacion == null)
-                return NotFound(new { message = "Notificación no encontrada" });
+                return NotFound(new { 
+                    success = false,
+                    message = "Notificación no encontrada" 
+                });
+            
+            if (notificacion.FueLeida)
+            {
+                return Ok(new { 
+                    success = true,
+                    message = "La notificación ya estaba marcada como leída",
+                    fechaLectura = notificacion.FechaLectura
+                });
+            }
             
             notificacion.FueLeida = true;
             notificacion.FechaLectura = DateTime.Now;
             
             await _context.SaveChangesAsync();
             
-            return Ok(new { message = "Notificación marcada como leída" });
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error al marcar notificación {NotificacionId} como leída", id);
-            return StatusCode(500, new { message = "Error al actualizar la notificación" });
-        }
-    }
-    
-    /// <summary>
-    /// Marca todas las notificaciones como leídas
-    /// PUT /api/notificaciones/me/marcar-todas-leidas
-    /// </summary>
-    [HttpPut("me/marcar-todas-leidas")]
-    public async Task<IActionResult> MarcarTodasComoLeidas()
-    {
-        try
-        {
-            var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+            _logger.LogInformation(
+                "Notificación {NotificacionId} marcada como leída por usuario {UserId}",
+                id, userId);
             
-            var notificaciones = await _context.Notificaciones
-                .Where(n => n.UsuarioID == userId && !n.FueLeida)
-                .ToListAsync();
-            
-            var ahora = DateTime.Now;
-            foreach (var notif in notificaciones)
-            {
-                notif.FueLeida = true;
-                notif.FechaLectura = ahora;
-            }
-            
-            await _context.SaveChangesAsync();
-            
-            return Ok(new
-            {
-                message = "Todas las notificaciones marcadas como leídas",
-                cantidad = notificaciones.Count
+            return Ok(new { 
+                success = true,
+                message = "Notificación marcada como leída",
+                fechaLectura = notificacion.FechaLectura
             });
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error al marcar todas las notificaciones como leídas");
-            return StatusCode(500, new { message = "Error al actualizar las notificaciones" });
+            _logger.LogError(ex, "Error al marcar notificación {NotificacionId} como leída", id);
+            return StatusCode(500, new { 
+                success = false,
+                message = "Error al actualizar la notificación" 
+            });
         }
     }
     
     /// <summary>
-    /// Obtiene el conteo de notificaciones no leídas
-    /// GET /api/notificaciones/me/no-leidas/count
+    /// Marca todas las notificaciones del usuario como leídas
+    /// PUT /api/notificaciones/marcar-todas-leidas
     /// </summary>
-    [HttpGet("me/no-leidas/count")]
-    public async Task<ActionResult<int>> ConteoNoLeidas()
-    {
-        try
-        {
-            var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
-            
-            var count = await _context.Notificaciones
-                .Where(n => n.UsuarioID == userId && !n.FueLeida)
-                .CountAsync();
-            
-            return Ok(new { count });
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error al contar notificaciones no leídas");
-            return StatusCode(500, new { message = "Error al obtener el conteo" });
-        }
-    }
-    
-    /// <summary>
-    /// Registra el token de dispositivo para notificaciones push
-    /// POST /api/notificaciones/dispositivo
-    /// </summary>
-    [HttpPost("dispositivo")]
-    public async Task<IActionResult> RegistrarDispositivo([FromBody] RegistrarDispositivoDto dto)
+    [HttpPut("marcar-todas-leidas")]
+    public async Task<IActionResult> MarcarTodasComoLeidas()
     {
         try
         {
@@ -374,93 +336,138 @@ public class NotificacionesController : ControllerBase
             if (string.IsNullOrEmpty(userId))
                 return Unauthorized();
             
-            // Verificar si el token ya existe
-            var dispositivoExistente = await _context.DispositivosUsuario
-                .FirstOrDefaultAsync(d => d.TokenPush == dto.TokenPush && d.UsuarioID == userId);
+            var notificacionesNoLeidas = await _context.Notificaciones
+                .Where(n => n.UsuarioID == userId && !n.FueLeida)
+                .ToListAsync();
             
-            if (dispositivoExistente != null)
+            if (!notificacionesNoLeidas.Any())
             {
-                // Actualizar dispositivo existente
-                dispositivoExistente.EsActivo = true;
-                dispositivoExistente.TipoDispositivo = dto.TipoDispositivo;
-                dispositivoExistente.Plataforma = dto.Plataforma;
-                dispositivoExistente.FechaRegistro = DateTime.Now;
+                return Ok(new { 
+                    success = true,
+                    message = "No hay notificaciones sin leer",
+                    actualizadas = 0
+                });
             }
-            else
+            
+            foreach (var notif in notificacionesNoLeidas)
             {
-                // Crear nuevo dispositivo
-                var nuevoDispositivo = new DispositivoUsuario
-                {
-                    UsuarioID = userId,
-                    TokenPush = dto.TokenPush,
-                    TipoDispositivo = dto.TipoDispositivo,
-                    Plataforma = dto.Plataforma,
-                    EsActivo = true,
-                    FechaRegistro = DateTime.Now
-                };
-                
-                _context.DispositivosUsuario.Add(nuevoDispositivo);
+                notif.FueLeida = true;
+                notif.FechaLectura = DateTime.Now;
             }
             
             await _context.SaveChangesAsync();
             
-            return Ok(new { message = "Dispositivo registrado correctamente" });
+            _logger.LogInformation(
+                "Usuario {UserId} marcó {Count} notificaciones como leídas",
+                userId, notificacionesNoLeidas.Count);
+            
+            return Ok(new { 
+                success = true,
+                message = $"{notificacionesNoLeidas.Count} notificaciones marcadas como leídas",
+                actualizadas = notificacionesNoLeidas.Count
+            });
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error al registrar dispositivo");
-            return StatusCode(500, new { message = "Error al registrar el dispositivo" });
+            _logger.LogError(ex, "Error al marcar todas las notificaciones como leídas");
+            return StatusCode(500, new { 
+                success = false,
+                message = "Error al actualizar las notificaciones" 
+            });
         }
     }
     
     /// <summary>
-    /// Desactiva un token de dispositivo
-    /// DELETE /api/notificaciones/dispositivo/{token}
+    /// Obtiene el contador de notificaciones no leídas
+    /// GET /api/notificaciones/no-leidas/count
     /// </summary>
-    [HttpDelete("dispositivo/{token}")]
-    public async Task<IActionResult> DesactivarDispositivo(string token)
+    [HttpGet("no-leidas/count")]
+    public async Task<ActionResult<int>> GetCountNoLeidas()
+    {
+        try
+        {
+            var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+            if (string.IsNullOrEmpty(userId))
+                return Unauthorized();
+            
+            var count = await _context.Notificaciones
+                .CountAsync(n => n.UsuarioID == userId && !n.FueLeida);
+            
+            return Ok(new { 
+                success = true,
+                count
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error al contar notificaciones no leídas");
+            return StatusCode(500, new { 
+                success = false,
+                message = "Error al obtener el contador" 
+            });
+        }
+    }
+    
+    /// <summary>
+    /// Elimina una notificación
+    /// DELETE /api/notificaciones/{id}
+    /// </summary>
+    [HttpDelete("{id}")]
+    public async Task<IActionResult> EliminarNotificacion(int id)
     {
         try
         {
             var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
             
-            var dispositivo = await _context.DispositivosUsuario
-                .FirstOrDefaultAsync(d => d.TokenPush == token && d.UsuarioID == userId);
+            var notificacion = await _context.Notificaciones
+                .FirstOrDefaultAsync(n => n.NotificacionID == id && n.UsuarioID == userId);
             
-            if (dispositivo == null)
-                return NotFound(new { message = "Dispositivo no encontrado" });
+            if (notificacion == null)
+                return NotFound(new { 
+                    success = false,
+                    message = "Notificación no encontrada" 
+                });
             
-            dispositivo.EsActivo = false;
+            _context.Notificaciones.Remove(notificacion);
             await _context.SaveChangesAsync();
             
-            return Ok(new { message = "Dispositivo desactivado" });
+            _logger.LogInformation(
+                "Notificación {NotificacionId} eliminada por usuario {UserId}",
+                id, userId);
+            
+            return Ok(new { 
+                success = true,
+                message = "Notificación eliminada" 
+            });
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error al desactivar dispositivo");
-            return StatusCode(500, new { message = "Error al desactivar el dispositivo" });
+            _logger.LogError(ex, "Error al eliminar notificación {NotificacionId}", id);
+            return StatusCode(500, new { 
+                success = false,
+                message = "Error al eliminar la notificación" 
+            });
         }
     }
     
-    // Método auxiliar
-    private NotificacionResponseDto MapToDto(Notificacion notificacion)
+    // Método auxiliar para mapear a DTO
+    private static NotificacionResponseDto MapToDto(Notificacion notificacion)
     {
         return new NotificacionResponseDto
         {
             NotificacionID = notificacion.NotificacionID,
             Titulo = notificacion.Titulo,
             Mensaje = notificacion.Mensaje,
-            TipoNotificacion = notificacion.TipoNotificacion,
-            ViajeID = notificacion.ViajeID,
-            CodigoViaje = notificacion.Viaje?.CodigoViaje,
-            BoletoID = notificacion.BoletoID,
-            CodigoBoleto = notificacion.Boleto?.CodigoBoleto,
-            FueEnviada = notificacion.FueEnviada,
-            FechaEnvio = notificacion.FechaEnvio,
+            TipoNotificacion = notificacion.TipoNotificacion ?? "General",
+            FechaCreacion = notificacion.FechaCreacion,
             FueLeida = notificacion.FueLeida,
             FechaLectura = notificacion.FechaLectura,
-            FechaCreacion = notificacion.FechaCreacion
+            FueEnviada = notificacion.FueEnviada,
+            FechaEnvio = notificacion.FechaEnvio,
+            ViajeID = notificacion.ViajeID,
+            BoletoID = notificacion.BoletoID
         };
     }
 }
+
 

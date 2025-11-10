@@ -166,6 +166,12 @@ builder.Services.AddScoped<Microsoft.AspNetCore.Authorization.IAuthorizationHand
 
 // Registrar servicios de aplicación
 builder.Services.AddScoped<prjBusTix.Services.INotificacionService, prjBusTix.Services.NotificacionService>();
+builder.Services.AddScoped<prjBusTix.Services.HangfireJobsService>();
+builder.Services.AddScoped<prjBusTix.Services.IAuditoriaService, prjBusTix.Services.AuditoriaService>();
+builder.Services.AddHttpContextAccessor(); // Necesario para auditoría
+
+// Configurar SignalR para notificaciones en tiempo real
+builder.Services.AddSignalR();
 
 var app = builder.Build();
 
@@ -258,13 +264,20 @@ app.UseHangfireDashboard("/hangfire", new DashboardOptions
 });
 
 // Configurar jobs recurrentes de Hangfire
-// TODO: Descomentar cuando se necesiten los jobs automáticos
-// prjBusTix.Services.HangfireJobsService.ConfigurarJobsRecurrentes();
+using (var scope = app.Services.CreateScope())
+{
+    var hangfireService = scope.ServiceProvider.GetRequiredService<prjBusTix.Services.HangfireJobsService>();
+    hangfireService.ConfigurarTrabajosRecurrentes();
+}
+
+// Mapear el Hub de SignalR para notificaciones en tiempo real
+app.MapHub<prjBusTix.Hubs.NotificacionesHub>("/hubs/notificaciones");
 
 app.MapControllers();
 
 app.Run();
 
 
-//wzzf edxj cnjy ozdk
+//usam kbex hkxx sudh
+
 //gnmiolwrxf115661

@@ -1717,6 +1717,10 @@ namespace prjBusTix.Migrations
                     b.Property<DateTime>("FechaAsignacion")
                         .HasColumnType("datetime2");
 
+                    b.Property<string>("Observaciones")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
                     b.Property<string>("RolEnViaje")
                         .IsRequired()
                         .HasMaxLength(50)

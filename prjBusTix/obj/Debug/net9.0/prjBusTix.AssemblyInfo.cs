@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("prjBusTix")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+a5826826b0725ca0bb65c72f143fe09285d1dc6c")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+3e0875ef8b34c7a2f2dca19c57bda0682f605661")]
 [assembly: System.Reflection.AssemblyProductAttribute("prjBusTix")]
 [assembly: System.Reflection.AssemblyTitleAttribute("prjBusTix")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]
